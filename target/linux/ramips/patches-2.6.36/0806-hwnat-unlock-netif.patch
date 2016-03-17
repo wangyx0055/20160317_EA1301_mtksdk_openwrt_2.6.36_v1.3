@@ -1,0 +1,40 @@
+Index: linux-2.6.36/net/nat/hw_nat/ra_nat.c
+===================================================================
+--- linux-2.6.36.orig/net/nat/hw_nat/ra_nat.c
++++ linux-2.6.36/net/nat/hw_nat/ra_nat.c
+@@ -3504,17 +3504,6 @@ static int SetAclFwd(uint32_t Ebl)
+ 			value &= ~(0x1 << 10);
+ 			RegWrite(RALINK_ETH_SW_BASE + 0x2004 + (i * 0x100), value);
+ 		}
+-		if(WanInt)
+-		{
+-		dev_put(WanInt);
+-			WanInt = NULL;
+-		}
+-
+-		if(LanInt)
+-		{
+-		dev_put(LanInt);
+-			LanInt = NULL;
+-		}
+ 		return 0;
+ 	}
+ 
+@@ -3555,6 +3544,17 @@ static int SetAclFwd(uint32_t Ebl)
+ 	SetAclControl(0x408, 0xa, 0x7F80);///Multicast inc. CPU
+ 	SetAclControl(0x808, 0xb, 0x8F80);//Multicast inc. PPE ??????
+ 
++	if(WanInt)
++	{
++		dev_put(WanInt);
++		WanInt = NULL;
++	}
++
++	if(LanInt)
++	{
++		dev_put(LanInt);
++		LanInt = NULL;
++	}
+ 	return 0;
+ }
+ 

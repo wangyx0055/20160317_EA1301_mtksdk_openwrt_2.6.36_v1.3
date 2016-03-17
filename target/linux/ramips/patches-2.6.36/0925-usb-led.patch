@@ -1,0 +1,326 @@
+Index: linux-2.6.36/drivers/usb/core/hcd.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/core/hcd.c
++++ linux-2.6.36/drivers/usb/core/hcd.c
+@@ -2050,6 +2050,11 @@ EXPORT_SYMBOL_GPL(usb_bus_start_enum);
+ 
+ /*-------------------------------------------------------------------------*/
+ 
++/* USB LED */
++#if 1
++void blink_usb_led(void);
++#endif
++
+ /**
+  * usb_hcd_irq - hook IRQs to HCD framework (bus glue)
+  * @irq: the IRQ being raised
+@@ -2082,6 +2087,11 @@ irqreturn_t usb_hcd_irq (int irq, void *
+ 		rc = IRQ_HANDLED;
+ 	}
+ 
++/* USB LED */
++#if 1
++	blink_usb_led();
++#endif
++
+ 	local_irq_restore(flags);
+ 	return rc;
+ }
+Index: linux-2.6.36/drivers/usb/core/usb.c
+===================================================================
+--- linux-2.6.36.orig/drivers/usb/core/usb.c
++++ linux-2.6.36/drivers/usb/core/usb.c
+@@ -44,6 +44,13 @@
+ 
+ #include "usb.h"
+ 
++/* USB LED */
++#if 1
++#include <asm/atomic.h>
++#include <linux/kthread.h>
++#include <linux/freezer.h>
++#include "../../../drivers/char/ralink_gpio.h"
++#endif
+ 
+ const char *usbcore_name = "usbcore";
+ 
+@@ -1064,6 +1071,251 @@ static void usb_debugfs_cleanup(void)
+ 	debugfs_remove(usb_debug_root);
+ }
+ 
++
++/* USB LED */
++#if 1
++
++#define GPIO_INPUT		0
++#define GPIO_OUTPUT		1
++#define USB_LED_GPIO		11 //39
++#define USB_BLINK_INTERVAL	50  /* ms */
++#define USB_LED_OFF		1
++#define USB_LED_ON		0
++
++int usb_led_blink = 0;
++/* Wakes up kusb_led */
++static DECLARE_WAIT_QUEUE_HEAD(kusb_led_wait);
++/* USB LED */
++static struct task_struct *kusb_led_task;
++
++void usbled_gpio_init(void)
++{
++#if 0
++	u32 data;
++
++	data = le32_to_cpu(*(volatile u32 *)(RALINK_REG_GPIOMODE));
++	data |= ;
++	*(volatile u32 *)(RALINK_REG_GPIOMODE) = cpu_to_le32(data);
++#endif
++}
++ 
++void blink_usb_led(void)
++{
++	usb_led_blink = 1;
++	wake_up(&kusb_led_wait);
++}
++EXPORT_SYMBOL_GPL(blink_usb_led);
++
++bool find_any_usb_dev(void)
++{
++	struct list_head *buslist;
++	struct usb_bus *bus;
++	bool any_device = false;
++	int i;
++
++	mutex_lock(&usb_bus_list_lock);
++	for (buslist = usb_bus_list.next;
++		buslist != &usb_bus_list;
++		buslist = buslist->next) {
++		bus = container_of(buslist, struct usb_bus, bus_list);
++		if (!bus->root_hub)
++			continue;
++		usb_lock_device(bus->root_hub);
++		for (i = 0; i < USB_MAXCHILDREN; i++) {
++			if (bus->root_hub->children[i]) {
++				any_device = true;
++				usb_unlock_device(bus->root_hub);
++				break;
++			}
++		}
++		usb_unlock_device(bus->root_hub);
++	}
++	mutex_unlock(&usb_bus_list_lock);
++
++	return any_device;
++}
++
++int get_gpio_idx(unsigned int idx)
++{
++	unsigned long tmp;
++
++#if defined (CONFIG_RALINK_MT7620)
++	if ((0L <= idx) && (idx < 24)) {
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIODATA));
++		tmp = (tmp >> idx) & 1L;
++		return tmp;
++	}
++	else if (idx < 40) {
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO3924DATA));
++		tmp = (tmp >> (idx - 24)) & 1L;
++		return tmp;
++	}
++	else if (idx < 72) {
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO7140DATA));
++		tmp = (tmp >> (idx - 40)) & 1L;
++		return tmp;
++	}
++	else 
++		return -1;
++#endif
++
++	return -1;
++}
++
++int set_gpio_idx(unsigned int idx, unsigned int value)
++{
++	unsigned long tmp;
++
++#if defined (CONFIG_RALINK_MT7620)
++	if ((0L <= idx) && (idx < 24)) {
++		tmp =le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIODATA));
++		if (value & 1L)
++			tmp |= (1L << idx);
++		else
++			tmp &= ~(1L << idx);
++		*(volatile u32 *)(RALINK_REG_PIODATA) = cpu_to_le32(tmp);
++
++		return get_gpio_idx(idx);
++	}
++	else if (idx < 40) {
++		tmp =le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO3924DATA));
++		if (value & 1L)
++			tmp |= (1L << (idx - 24));
++		else
++			tmp &= ~(1L << (idx - 24));
++		*(volatile u32 *)(RALINK_REG_PIO3924DATA) = cpu_to_le32(tmp);
++
++		return get_gpio_idx(idx);
++	}
++	else if (idx < 72) {
++		tmp =le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO7140DATA));
++		if (value & 1L)
++			tmp |= (1L << (idx - 40));
++		else
++			tmp &= ~(1L << (idx - 40));
++		*(volatile u32 *)(RALINK_REG_PIO7140DATA) = cpu_to_le32(tmp);
++
++		return get_gpio_idx(idx);
++	}
++	else
++		return -1;
++#endif
++
++	return -1;
++
++}
++
++int get_gpio_idx_dir(unsigned int idx)
++{
++	unsigned long tmp;
++
++#if defined (CONFIG_RALINK_MT7620)
++	if ((0L <= idx) && (idx < 24)) {
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIODIR));
++		tmp = (tmp >> idx) & 1L;
++		return tmp;
++	}
++	else if (idx < 40) {
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO3924DIR));
++		tmp = (tmp >> idx) & 1L;
++		return tmp;
++	}
++	else if (idx < 72) {
++		tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO7140DIR));
++		tmp = (tmp >> idx) & 1L;
++		return tmp;
++	}
++	else 
++		return -1;
++#endif
++
++	return -1;
++}
++
++int set_gpio_idx_dir(unsigned int idx, unsigned int value)
++{
++	unsigned long tmp;
++
++	if (value == GPIO_INPUT) {
++#if defined (CONFIG_RALINK_MT7620)
++		if ((0L <= idx) && (idx < 24)) {
++			tmp &= ~(0x1 << idx);
++			*(volatile u32 *)(RALINK_REG_PIODIR) = cpu_to_le32(tmp);
++		}
++		else if (idx < 40) {
++			tmp &= ~(0x1 << (idx - 24));
++			*(volatile u32 *)(RALINK_REG_PIO3924DIR) = cpu_to_le32(tmp);
++		}
++		else if (idx < 72) {
++			tmp &= ~(0x1 << (idx - 40));
++			*(volatile u32 *)(RALINK_REG_PIO7140DIR) = cpu_to_le32(tmp);
++		}
++		else {
++			printk("set_gpio_idx_dir: index(%d) out of range\n", idx);
++			return -1;
++		}
++#endif
++	}
++	else {
++#if defined (CONFIG_RALINK_MT7620)
++		if ((0L <= idx) && (idx < 24)) {
++			tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIODIR));
++			tmp |= 0x1 << idx;
++			*(volatile u32 *)(RALINK_REG_PIODIR) = cpu_to_le32(tmp);
++		}
++		else if (idx < 40) {
++			tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO3924DIR));
++			tmp |= 0x1 << (idx - 24);
++			*(volatile u32 *)(RALINK_REG_PIO3924DIR) = cpu_to_le32(tmp);
++		}
++		else if (idx < 72) {
++			tmp = le32_to_cpu(*(volatile u32 *)(RALINK_REG_PIO7140DIR));
++			tmp |= 0x1 << (idx - 40);
++			*(volatile u32 *)(RALINK_REG_PIO7140DIR) = cpu_to_le32(tmp);
++		}
++		else {
++			printk("set_gpio_idx_dir: index(%d) out of range\n", idx);
++			return -1;
++		}
++#endif
++	}
++
++	return get_gpio_idx_dir(idx);
++}
++
++static void usb_led(int val)
++{
++	set_gpio_idx_dir(USB_LED_GPIO, GPIO_OUTPUT);
++	set_gpio_idx(USB_LED_GPIO, val);
++}
++
++static void set_usb_led(void)
++{
++	if (find_any_usb_dev() == true) {
++		if (usb_led_blink) {
++			usb_led_blink = 0;
++			usb_led(USB_LED_OFF);
++			msleep(USB_BLINK_INTERVAL);
++		}
++		usb_led(USB_LED_ON);
++	}
++	else
++		usb_led(USB_LED_OFF);
++
++}
++
++static int usb_led_thread(void *__unused)
++{
++	do {
++		set_usb_led();
++		interruptible_sleep_on_timeout(&kusb_led_wait, CONFIG_HZ);
++	} while (!kthread_should_stop());
++
++	pr_debug("%s: kusb_led exiting\n", usbcore_name);
++	return 0;
++}
++#endif
++
+ /*
+  * Init
+  */
+@@ -1101,6 +1353,15 @@ static int __init usb_init(void)
+ 	if (retval)
+ 		goto hub_init_failed;
+ 	retval = usb_register_device_driver(&usb_generic_driver, THIS_MODULE);
++
++/* USB LED */
++#if 1
++	usbled_gpio_init();
++	kusb_led_task = kthread_run(usb_led_thread, NULL, "kusb_led");
++	if (IS_ERR(kusb_led_task))
++		printk(KERN_ERR "%s: can't start kusb_led\n", usbcore_name);
++#endif
++
+ 	if (!retval)
+ 		goto out;
+ 
+@@ -1128,6 +1389,11 @@ out:
+  */
+ static void __exit usb_exit(void)
+ {
++/* USB LED */
++#if 1
++	kthread_stop(kusb_led_task);
++#endif
++
+ 	/* This will matter if shutdown/reboot does exitcalls. */
+ 	if (nousb)
+ 		return;

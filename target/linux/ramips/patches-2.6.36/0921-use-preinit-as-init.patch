@@ -1,0 +1,22 @@
+Index: linux-2.6.36/init/main.c
+===================================================================
+--- linux-2.6.36.orig/init/main.c
++++ linux-2.6.36/init/main.c
+@@ -848,10 +848,16 @@ static noinline int init_post(void)
+ 		printk(KERN_WARNING "Failed to execute %s.  Attempting "
+ 					"defaults...\n", execute_command);
+ 	}
++	printk("init.main L%d\n", __LINE__);
++	run_init_process("/etc/preinit");
++	printk("init.main L%d\n", __LINE__);
+ 	run_init_process("/sbin/init");
++	printk("init.main L%d\n", __LINE__);
+ 	run_init_process("/etc/init");
++	printk("init.main L%d\n", __LINE__);
+ 	run_init_process("/bin/init");
+-	run_init_process("/bin/sh");
++	printk("init.main L%d\n", __LINE__);
++//	run_init_process("/bin/ash");
+ 
+ 	panic("No init found.  Try passing init= option to kernel. "
+ 	      "See Linux Documentation/init.txt for guidance.");

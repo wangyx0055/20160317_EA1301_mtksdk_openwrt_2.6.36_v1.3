@@ -1,0 +1,130 @@
+Index: linux-2.6.36/net/nat/hw_nat/ra_nat.c
+===================================================================
+--- linux-2.6.36.orig/net/nat/hw_nat/ra_nat.c
++++ linux-2.6.36/net/nat/hw_nat/ra_nat.c
+@@ -3457,15 +3457,17 @@ static void SetAclControl(uint32_t HIT_P
+ 
+ }
+ 
+-struct net_device *LanInt;
+-struct net_device *WanInt;
+-static void SetAclFwd(uint32_t Ebl)
++struct net_device *LanInt = NULL;
++struct net_device *WanInt = NULL;
++static int SetAclFwd(uint32_t Ebl)
+ {
+ 	uint16_t mac_pattern;
+ 	unsigned int i, value;
+ 
++	printk("%s(%d)\n", __FUNCTION__, Ebl);
+ 
+-	if(Ebl){
++	if(Ebl)
++	{
+ #if defined (CONFIG_RAETH_SPECIAL_TAG)
+ #if defined (CONFIG_WAN_AT_P4)
+ 		WanInt = ra_dev_get_by_name("eth2.5");
+@@ -3475,22 +3477,45 @@ static void SetAclFwd(uint32_t Ebl)
+ #else
+ 		WanInt = ra_dev_get_by_name("eth2.2");
+ #endif
+-		LanInt = ra_dev_get_by_name("br0");
++		if(!WanInt)
++		{
++			printk(KERN_ERR "Unable to find WAN dev, eth2.2!\n");
++			return -1;
++		}
++
++		LanInt = ra_dev_get_by_name("br-lan");
++		if(!LanInt)
++		{
++			printk(KERN_ERR "Unable to find LAN dev, br-lan!\n");
++			dev_put(WanInt);
++			return -1;
++		}
++
+ 		for(i = 0;i< 6;i++){
+ 			value = RegRead(RALINK_ETH_SW_BASE + 0x2004 + (i * 0x100));
+ 			value |= (0x1 << 10);
+ 			RegWrite(RALINK_ETH_SW_BASE + 0x2004 + (i * 0x100), value);
+ 		}
+ 	}
+-	else{
++	else
++	{
+ 		for(i = 0;i< 6;i++){
+ 			value = RegRead(RALINK_ETH_SW_BASE + 0x2004 + (i * 0x100));
+ 			value &= ~(0x1 << 10);
+ 			RegWrite(RALINK_ETH_SW_BASE + 0x2004 + (i * 0x100), value);
+ 		}
++		if(WanInt)
++		{
+ 		dev_put(WanInt);
++			WanInt = NULL;
++		}
++
++		if(LanInt)
++		{
+ 		dev_put(LanInt);
+-		return;
++			LanInt = NULL;
++		}
++		return 0;
+ 	}
+ 
+ 	printk("LAN dev address is %2x %2x %2x %2x %2x %2x \n", LanInt->dev_addr[0], LanInt->dev_addr[1], \
+@@ -3530,6 +3554,7 @@ static void SetAclFwd(uint32_t Ebl)
+ 	SetAclControl(0x408, 0xa, 0x7F80);///Multicast inc. CPU
+ 	SetAclControl(0x808, 0xb, 0x8F80);//Multicast inc. PPE ??????
+ 
++	return 0;
+ }
+ 
+ #endif
+@@ -3756,7 +3781,7 @@ void foe_ts_update_ebl(int ebl)
+  */
+ static int32_t PpeInitMod(void)
+ {
+-    NAT_PRINT("Ralink HW NAT Module Enabled\n");
++    NAT_PRINT("Enabling Ralink HW NAT Module ...\n");
+ 
+     /* Set PPE FOE Hash Mode */
+     if(!PpeSetFoeHashMode(DFL_FOE_HASH_MODE)) {
+@@ -3802,9 +3827,11 @@ static int32_t PpeInitMod(void)
+     /* Set GMAC fowrards packet to PPE */
+ #if defined (CONFIG_RALINK_MT7620)
+     if ((RegRead(0xB000000C) & 0xf) < 0x5) {
+-
+-	SetAclFwd(1);
+-
++		if( 0 != SetAclFwd(1))
++		{
++			printk("Ralink HW NAT Init Fail! Line %d\n", __LINE__);
++			return -1;
++		}
+     } else {
+ 
+ 	uint32_t reg;
+@@ -3836,12 +3863,13 @@ static int32_t PpeInitMod(void)
+ #if defined (CONFIG_RA_HW_NAT_PPTP_L2TP)
+ 	fast_pptp_init();
+ #endif
++	NAT_PRINT("Ralink HW NAT Module Enabled!\n");
+ 	return 0;
+ }
+ 
+ static void PpeCleanupMod(void)
+ {
+-    NAT_PRINT("Ralink HW NAT Module Disabled\n");
++    NAT_PRINT("Removing Ralink HW NAT Module...\n");
+ 
+     /* Set GMAC fowrards packet to CPU */
+ #if defined (CONFIG_RALINK_MT7620)
+@@ -3893,6 +3921,7 @@ static void PpeCleanupMod(void)
+ #if defined (CONFIG_RA_HW_NAT_PPTP_L2TP)
+ 	fast_pptp_clean();
+ #endif
++	NAT_PRINT("Ralink HW NAT Module Removed!\n");
+ }
+ 
+ module_init(PpeInitMod);

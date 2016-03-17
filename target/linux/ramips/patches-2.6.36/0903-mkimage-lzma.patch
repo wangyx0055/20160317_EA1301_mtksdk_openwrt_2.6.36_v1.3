@@ -1,0 +1,16 @@
+Index: linux-2.6.36/scripts/gen_initramfs_list.sh
+===================================================================
+--- linux-2.6.36.orig/scripts/gen_initramfs_list.sh
++++ linux-2.6.36/scripts/gen_initramfs_list.sh
+@@ -296,8 +296,9 @@ if [ ! -z ${output_file} ]; then
+ 		cat ${cpio_tfile} > ${output_file}
+ 	else
+ 		if [ "${compr}" = "lzma_alone" ]; then
+-			cross_compile_path=`echo ${CONFIG_CROSS_COMPILER_PATH} | sed -e 's/\"//g'`
+-			${cross_compile_path}/lzma_alone e ${cpio_tfile} ${output_file} -d20
++			lzmatoolpath=`pwd | sed -n 's/build_dir.*$//p'`staging_dir/host/bin/lzma
++			echo ${lzmatoolpath}
++			${lzmatoolpath} e ${cpio_tfile} ${output_file} -d20
+ 		else
+ 		(cat ${cpio_tfile} | ${compr}  - > ${output_file}) \
+ 		|| (rm -f ${output_file} ; false)

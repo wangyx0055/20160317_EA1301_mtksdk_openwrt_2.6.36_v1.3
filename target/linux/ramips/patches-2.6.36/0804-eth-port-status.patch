@@ -1,0 +1,108 @@
+Index: linux-2.6.36/drivers/net/raeth/ra_ioctl.h
+===================================================================
+--- linux-2.6.36.orig/drivers/net/raeth/ra_ioctl.h
++++ linux-2.6.36/drivers/net/raeth/ra_ioctl.h
+@@ -69,6 +69,13 @@
+ #endif
+ #define REG_HQOS_MAX			0x3FFF
+ 
++#define RAETH_ESW_GET_PID 		(0x89FC)
++
++typedef struct {
++
++	pid_t pid; // proccess id to notify
++} ralink_esw_reg_info;
++
+ 
+ typedef struct rt3052_esw_reg {
+ 	unsigned int off;
+Index: linux-2.6.36/drivers/net/raeth/raether.c
+===================================================================
+--- linux-2.6.36.orig/drivers/net/raeth/raether.c
++++ linux-2.6.36/drivers/net/raeth/raether.c
+@@ -1162,6 +1162,32 @@ raeth_clean(struct net_device *netdev, i
+ 
+ #endif
+ 
++
++ralink_esw_reg_info eswinfo;
++void ralink_esw_notify_user(int usr)
++{
++	struct task_struct *p = NULL;
++#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
++	p = find_task_by_vpid(eswinfo.pid);
++#else
++	p = find_task_by_pid(eswinfo.pid);
++#endif
++
++	if (NULL == p) {
++		printk(": no registered process to notify\n");
++		return;
++	}
++
++	if (usr == 1) {
++		send_sig(SIGUSR1, p, 0);
++	}
++	else if (usr == 2) {
++		send_sig(SIGUSR2, p, 0);
++	}
++}
++
++
++
+ /**
+  * ei_interrupt - handle controler interrupt
+  *
+@@ -1293,12 +1319,14 @@ static irqreturn_t ei_interrupt(int irq,
+ 					// delay setting for 100M
+ 					mii_mgr_write(31, 0x7b00, 8);
+ 					printk("MT7621 GE2 link rate to 100M\n");
++					ralink_esw_notify_user(1);
+ 					schedule_work(&ei_local->kill_sig_wq);
+ 				} else
+ 				{
+ 					//delay setting for 10/1000M
+ 					mii_mgr_write(31, 0x7b00, 0x102);
+ 					printk("MT7621 GE2 link rate to 10M/1G\n");
++					ralink_esw_notify_user(1);
+ 					schedule_work(&ei_local->kill_sig_wq);
+ 				}
+ 			}
+@@ -1368,21 +1396,27 @@ static irqreturn_t esw_interrupt(int irq
+     defined(CONFIG_RALINK_MT7620)
+ 	if (reg_int_val & P5_LINK_CH) {
+ 	    esw_link_status_changed(5, dev_id);
++		ralink_esw_notify_user(1);
+ 	}
+ 	if (reg_int_val & P4_LINK_CH) {
+ 	    esw_link_status_changed(4, dev_id);
++		ralink_esw_notify_user(1);
+ 	}
+ 	if (reg_int_val & P3_LINK_CH) {
+ 	    esw_link_status_changed(3, dev_id);
++		ralink_esw_notify_user(1);
+ 	}
+ 	if (reg_int_val & P2_LINK_CH) {
+ 	    esw_link_status_changed(2, dev_id);
++		ralink_esw_notify_user(1);
+ 	}
+ 	if (reg_int_val & P1_LINK_CH) {
+ 	    esw_link_status_changed(1, dev_id);
++		ralink_esw_notify_user(1);
+ 	}
+ 	if (reg_int_val & P0_LINK_CH) {
+ 	    esw_link_status_changed(0, dev_id);
++		ralink_esw_notify_user(1);
+ 	}
+ 	if (reg_int_val & ACL_INT) {
+ 	    acl_int_val = sysRegRead(ESW_AISR);
+@@ -1935,6 +1969,9 @@ int ei_ioctl(struct net_device *dev, str
+ #endif
+ 			break;
+ #endif
++		case RAETH_ESW_GET_PID:
++			copy_from_user(&eswinfo, ifr->ifr_data, sizeof(eswinfo));
++			break;
+ #endif // CONFIG_RT_3052_ESW
+ 		default:
+ 			return -EOPNOTSUPP;

@@ -1,0 +1,13 @@
+Index: linux-2.6.36/drivers/net/raeth/raether.c
+===================================================================
+--- linux-2.6.36.orig/drivers/net/raeth/raether.c
++++ linux-2.6.36/drivers/net/raeth/raether.c
+@@ -1026,7 +1026,7 @@ void kill_sig_workq(struct work_struct *
+ 	struct task_struct *p = NULL;
+ 
+ 	//read udhcpc pid from file, and send signal USR2,USR1 to get a new IP
+-	fp = filp_open("/var/run/udhcpc.pid", O_RDONLY, 0);
++	fp = filp_open("/var/run/udhcpc-eth0.2.pid", O_RDONLY, 0);
+ 	if (IS_ERR(fp))
+ 	    return;
+ 

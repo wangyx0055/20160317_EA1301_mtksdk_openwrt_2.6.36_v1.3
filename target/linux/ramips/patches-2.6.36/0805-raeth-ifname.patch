@@ -1,0 +1,79 @@
+Index: linux-2.6.36/drivers/net/raeth/raether.h
+===================================================================
+--- linux-2.6.36.orig/drivers/net/raeth/raether.h
++++ linux-2.6.36/drivers/net/raeth/raether.h
+@@ -46,8 +46,8 @@
+ #endif
+ #endif
+ 
+-#define DEV_NAME        "eth2"
+-#define DEV2_NAME       "eth3"
++#define DEV_NAME        "eth0"
++#define DEV2_NAME       "eth1"
+ 
+ #if defined (CONFIG_RALINK_RT6855A) || defined (CONFIG_RALINK_MT7621)
+ #define GMAC0_OFFSET    0xE000
+Index: linux-2.6.36/net/nat/hw_nat/ra_nat.c
+===================================================================
+--- linux-2.6.36.orig/net/nat/hw_nat/ra_nat.c
++++ linux-2.6.36/net/nat/hw_nat/ra_nat.c
+@@ -2275,11 +2275,11 @@ uint32_t PpeSetExtIfNum(struct sk_buff *
+ 	    offset = DP_USB;
+ 	}
+ #endif // CONFIG_RA_HW_NAT_NIC_USB //
+-	else if (strncmp(skb->dev->name, "eth2", 4) == 0) {
++	else if (strncmp(skb->dev->name, "eth0", 4) == 0) {
+ 	    offset = DP_GMAC;
+ 	}
+ #ifdef CONFIG_RAETH_GMAC2
+-	else if (strncmp(skb->dev->name, "eth3", 4) == 0) {
++	else if (strncmp(skb->dev->name, "eth1", 4) == 0) {
+ 	    offset = DP_GMAC2;
+ 	}
+ #endif
+@@ -3147,9 +3147,9 @@ static void PpeSetDstPort(uint32_t Ebl)
+ #endif // CONFIG_RTDEV_AP_MESH //
+ #endif // CONFIG_RA_HW_NAT_WIFI //
+ 
+-	DstPort[DP_GMAC] = ra_dev_get_by_name("eth2");
++	DstPort[DP_GMAC] = ra_dev_get_by_name("eth0");
+ #ifdef CONFIG_RAETH_GMAC2
+-	DstPort[DP_GMAC2] = ra_dev_get_by_name("eth3");
++	DstPort[DP_GMAC2] = ra_dev_get_by_name("eth1");
+ #endif
+ #if defined (CONFIG_RA_HW_NAT_NIC_USB)
+ 	DstPort[DP_PCI] = ra_dev_get_by_name("eth0");	// PCI interface name
+@@ -3470,16 +3470,16 @@ static int SetAclFwd(uint32_t Ebl)
+ 	{
+ #if defined (CONFIG_RAETH_SPECIAL_TAG)
+ #if defined (CONFIG_WAN_AT_P4)
+-		WanInt = ra_dev_get_by_name("eth2.5");
++		WanInt = ra_dev_get_by_name("eth0.5");
+ #else
+-		WanInt = ra_dev_get_by_name("eth2.1");
++		WanInt = ra_dev_get_by_name("eth0.1");
+ #endif
+ #else
+-		WanInt = ra_dev_get_by_name("eth2.2");
++		WanInt = ra_dev_get_by_name("eth0.2");
+ #endif
+ 		if(!WanInt)
+ 		{
+-			printk(KERN_ERR "Unable to find WAN dev, eth2.2!\n");
++			printk(KERN_ERR "Unable to find WAN dev, eth0.2!\n");
+ 			return -1;
+ 		}
+ 
+Index: linux-2.6.36/net/nat/hw_nat/fast_path.c
+===================================================================
+--- linux-2.6.36.orig/net/nat/hw_nat/fast_path.c
++++ linux-2.6.36/net/nat/hw_nat/fast_path.c
+@@ -47,7 +47,7 @@ extern PktParseResult          PpeParseR
+ extern uint32_t         DebugLevel;
+ 
+ struct net_dev *wan_dev;
+-char *ifname="eth2";
++char *ifname="eth0";
+ char *pppname="ppp0";
+ 
+ struct pptp_info {
